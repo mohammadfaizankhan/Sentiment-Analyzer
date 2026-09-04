@@ -1,13 +1,13 @@
 # Sentiment Analyzer
 
-A React dashboard for English `.txt` conversations. VADER provides fast, deterministic local sentiment; optional NVIDIA Nemotron 3 Super adds summaries, emotions, call KPIs and contextual review of ambiguous sentences. The existing login/upload application is preserved.
+A React dashboard for English `.txt` conversations. VADER provides fast, deterministic local sentiment; optional NVIDIA Nemotron 3 Super adds summaries, emotions, call KPIs and contextual review of ambiguous sentences. The SignalSense interface follows the supplied reference: registration, persistent sign-in, uploads, pasted transcripts, and sample calls.
 
 **Deployed and verified on Vercel.** See [REQUIREMENTS.md](REQUIREMENTS.md) for the assignment and follow-up audit.
 
 - [Live application](https://sentiment-analyzer-xi-five.vercel.app/)
 - [Public backend API documentation](https://sentiment-analyzer-api-one.vercel.app/docs)
 
-The hosted app uses a separate production password. Its username/password were saved locally in ignored `backend/.env.production`; production credentials are not in this repository. The development demo password does not grant access to the hosted backend.
+Choose **Register** on the hosted app to create your account with a name, email, and password. Existing accounts use **Sign in**. Browser authentication uses a 24-hour signed HttpOnly cookie; refreshing restores your session.
 
 ## Architecture
 
@@ -28,7 +28,7 @@ React login / upload / Add AI insights
   → typed JSON → dashboard
 ```
 
-LangGraph satisfies the PDF's allowance for n8n **or another agentic orchestration tool**. No second orchestration service, database, RAG, queue, model training or multiple agents are needed.
+LangGraph satisfies the PDF's allowance for n8n **or another agentic orchestration tool**. Account storage is separate from analysis: SQLite locally and private Vercel Blob in production. No transcripts are stored.
 
 | Responsibility | Engine |
 | --- | --- |
@@ -44,9 +44,9 @@ Interview explanation: “We use VADER as the primary sentiment analyzer because
 
 React 19, Vite 7, plain CSS; FastAPI, LangGraph, VADER, pySBD, HTTPX, Pydantic; pytest/Ruff and Vitest/Testing Library/ESLint.
 
-- `frontend/src/App.jsx`: login, memory-only session, upload, opt-in and API states.
+- `frontend/src/App.jsx`: registration, cookie session restoration, upload/paste/sample, opt-in and API states.
 - `frontend/src/components/Results.jsx`: overview, score, chart, trend, table, KPIs and evidence.
-- `backend/app/main.py`, `auth.py`, `models.py`: authenticated API and response schemas.
+- `backend/app/main.py`, `auth.py`, `accounts.py`, `models.py`: authenticated API, durable accounts, signed sessions and response schemas.
 - `backend/app/sentiment.py`: parsing, speaker labels and VADER.
 - `backend/app/config.py`, `ambiguity.py`, `kpis.py`: settings, review rules and numeric calculations.
 - `backend/app/workflow.py`: compiled orchestration and safe fallback.
@@ -74,7 +74,7 @@ if (!(Test-Path .env)) { Copy-Item .env.example .env }
 notepad .env
 ```
 
-Set `APP_USERNAME` and `APP_PASSWORD` in your local `.env`; credentials and NVIDIA keys are not included in this repository. To use **Fill demo login** for a local demonstration, configure **analyst / read-conversations**. Use your own strong password for deployment. Personal usernames do not create accounts. The demo shortcut appears only in local development and is excluded from production builds.
+Use **Register** to create a local account. Local accounts live in ignored `backend/data/accounts.sqlite3`; a persistent signing secret is generated in that same ignored directory. You can instead configure `AUTH_SECRET` (at least 32 random characters). `APP_USERNAME`/`APP_PASSWORD` are optional legacy Basic credentials for API scripts; they do not create browser email accounts.
 
 Backend, terminal 1:
 
@@ -98,12 +98,15 @@ Open [the local app](http://127.0.0.1:5173/). Use existing servers if they are a
 
 | Variable | Location | Purpose |
 | --- | --- | --- |
-| `APP_USERNAME`, `APP_PASSWORD` | Backend only | Required Basic auth; printable ASCII, no colon in username. Blank/example passwords fail closed. |
+| `APP_USERNAME`, `APP_PASSWORD` | Backend only | Optional legacy Basic auth for API scripts. Blank/example passwords fail closed. |
+| `AUTH_SECRET` | Backend only | Required on Vercel: at least 32 random characters for session signing. Rotating it signs out every account. |
+| `BLOB_READ_WRITE_TOKEN` / `BLOB_STORE_ID` | Backend only | Private Vercel Blob account store; populated when connected to the backend project. |
+| `ACCOUNTS_DB_PATH` | Local backend | Optional SQLite path; defaults to `backend/data/accounts.sqlite3`. Never used as a fallback on Vercel. |
 | `NVIDIA_API_KEY` | Backend only | Optional provider key. Never expose through a `VITE_` variable. |
 | `NVIDIA_MODEL` | Backend only | Default `nvidia/nemotron-3-super-120b-a12b`. |
 | `AMBIGUITY_THRESHOLD` | Backend only | Default `0.20`; finite number from 0 to 1. Invalid settings fail explicitly. |
 | `CORS_ORIGINS` | Backend only | Exact comma-separated frontend origins; localhost/127.0.0.1:5173 by default. |
-| `VITE_API_URL` | Frontend build environment | Public backend origin; defaults to `http://127.0.0.1:8000`. |
+| Same-origin `/api` routing | Frontend config | Vite proxies to port 8000 locally; Vercel rewrites to the public backend. No frontend API environment variable is required. |
 
 Example AI configuration (placeholder only):
 
@@ -115,7 +118,9 @@ AMBIGUITY_THRESHOLD=0.20
 
 Obtain a key from [NVIDIA Build](https://build.nvidia.com/nvidia/nemotron-3-super-120b-a12b), then enter it directly in `backend/.env`. Existing process variables take precedence over `.env`. The [NVIDIA hosted chat endpoint](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-super-120b-a12b) is called with thinking disabled for this bounded extraction task.
 
-The frontend never receives the provider key. Both API endpoints authenticate. Credentials and results stay in component memory; refresh signs out. The app does not persist transcripts. AI opt-in discloses transmission to NVIDIA, whose service terms apply. Leave LangSmith tracing disabled when transcripts must remain local. Production Basic auth needs HTTPS and a new strong password. `.gitignore` excludes `.env` and `.env.*`, except placeholder `.env.example` files. Only source, tests, examples, lockfiles and project documentation are tracked; local environment files and generated output are excluded.
+The frontend never receives provider keys or account hashes. Passwords are hashed with scrypt and unique random salts. Production account records are stored in a **private** Blob store under hashed email paths with create-only writes. Cookies are HttpOnly, SameSite=Lax, Secure on HTTPS, and expire after 24 hours. Authentication responses disable caching; cross-origin cookie mutations are rejected. The first-party API proxy avoids third-party cookie dependence. Neither passwords nor session tokens are stored in localStorage/sessionStorage.
+
+Logout clears the browser cookie. Signed sessions are stateless: a copied cookie remains valid until expiry or `AUTH_SECRET` rotation. Registration does not verify email ownership and password recovery is not implemented, matching the reference's scope. For broader public use, add email verification/recovery and provider-level authentication rate limits. User accounts are persisted; transcripts and analysis results are not. AI opt-in discloses transmission to NVIDIA, whose service terms apply. Leave LangSmith tracing disabled when transcripts must remain local. `.gitignore` excludes environment files, account data and generated output.
 
 ## Analysis rules
 
@@ -146,8 +151,10 @@ VADER can miss English context and sarcasm. Nemotron can misinterpret emotions o
 
 | Endpoint | Input | Response |
 | --- | --- | --- |
-| `POST /api/login` | HTTP Basic, no body | `username` |
-| `POST /api/analyze` | HTTP Basic; multipart `file`, `include_insights` default false | Filename, overall label/score, distribution, baseline, sentences, calculated KPIs, optional insights/notices |
+| `GET /api/auth` | Session cookie | Public `user` (name/email), or null |
+| `POST /api/auth` | JSON action `register`, `login`, or `logout`; name/email/password as needed | Public `user`; sets or clears session cookie |
+| `POST /api/login` | Legacy HTTP Basic, no body | `username` |
+| `POST /api/analyze` | Session cookie or legacy HTTP Basic; multipart `file`, `include_insights` default false | Filename, overall label/score, distribution, baseline, sentences, calculated KPIs, optional insights/notices |
 
 Each sentence has `id`, `speaker`, `text`, `sentiment`, `vader_sentiment`, `compound_score`, `analyzer` (`vader` or `nemotron-contextual`), ambiguity reasons, contextual explanation and source IDs. Top-level `analyzer` is `hybrid` if a label changed. `insights` contains validated finding objects. `kpis.counts`/`percentages` are calculated locally. Errors have readable `detail`, without provider secrets or internal error text.
 
@@ -178,7 +185,7 @@ Live synthetic transcript checks also passed via the backend and browser: four r
 
 ## Interview demo
 
-1. Sign in with the configured workspace account.
+1. Register or sign in with your email account.
 2. Upload `samples/trend-demo.txt`, AI OFF. Show distribution, raw scores and Negative → Neutral → Positive trend.
 3. Upload `samples/hybrid-demo.txt`, AI OFF. Point out VADER's literal reading of “Great, I've been waiting for three hours.”
 4. Enable **Add AI insights** and reanalyze. Expand **Context reviewed · label changed**. Explain the corrected label and unchanged raw score. Review resolution, emotions, topics and evidence.
@@ -199,7 +206,7 @@ For missing-key fallback without editing the stored key: stop the backend, set `
 
 `frontend/vercel.json` and `backend/vercel.json` configure separate frontend and FastAPI projects. Both are deployed in the `sentiment-analyzer1` Vercel team: `sentiment-analyzer` (frontend) and `sentiment-analyzer-api` (backend). GitHub sign-in is linked to the owner's Vercel account. These deployments were published with the CLI from their respective subdirectories.
 
-The backend uses Python 3.12 and a 60-second function limit. Ruff settings live in `backend/ruff.toml`, so Vercel installs runtime dependencies from `requirements.txt` rather than treating a lint-only `pyproject.toml` as a Python package. Production `CORS_ORIGINS` is restricted to the live frontend origin, and frontend `VITE_API_URL` points to the public backend. The production password and NVIDIA key are stored as sensitive backend environment variables.
+The backend uses Python 3.12 and a 60-second function limit. Ruff settings live in `backend/ruff.toml`, so Vercel installs runtime dependencies from `requirements.txt` rather than treating a lint-only `pyproject.toml` as a Python package. Production `CORS_ORIGINS` is restricted to the live frontend origin, and the frontend rewrites `/api/*` to the public backend. The signing secret, Blob token, optional legacy password, and NVIDIA key are backend-only environment variables.
 
 Hosted verification passed: public access, authenticated login, unauthorized-request rejection, CORS preflight, `.txt` upload, VADER results, empty-file rejection, live Nemotron insights, contextual corrections, score preservation, chart rendering, filtering and evidence expansion. One initial NVIDIA timeout preserved the local results; a subsequent browser analysis successfully returned all AI insights. No browser errors or page-wide horizontal overflow were observed. The published JavaScript bundle contains neither the provider key nor the production password.
 
@@ -215,9 +222,9 @@ npx.cmd vercel deploy --prod --scope sentiment-analyzer1
 For a new Vercel account or fresh project setup:
 
 1. Authenticate with `npx.cmd vercel login`.
-2. From `backend`, run `npx.cmd vercel` to link the project. Set `APP_USERNAME`, a new strong `APP_PASSWORD`, `CORS_ORIGINS`, and optional `NVIDIA_API_KEY`/`NVIDIA_MODEL` in hosting settings. Deploy with `npx.cmd vercel --prod`.
-3. From `frontend`, run `npx.cmd vercel`; set build variable `VITE_API_URL` to the backend HTTPS origin. Deploy with `npx.cmd vercel --prod`.
+2. From `backend`, run `npx.cmd vercel` to link the project. Create and connect a private Blob store using `npx.cmd vercel blob create-store signalsense-accounts --access private --yes --environment production`. Set a random `AUTH_SECRET` of at least 32 characters, `CORS_ORIGINS`, and optional `NVIDIA_API_KEY`/`NVIDIA_MODEL` in backend hosting settings. Deploy with `npx.cmd vercel --prod`.
+3. From `frontend`, run `npx.cmd vercel`; set the `/api/:path*` rewrite destination in `frontend/vercel.json` to your backend HTTPS origin plus `/api/:path*`. Deploy with `npx.cmd vercel --prod`.
 4. Set backend `CORS_ORIGINS` to the exact frontend HTTPS production origin and redeploy. Ensure hosting request-duration limits accommodate optional inference and deployment protection permits browser API requests/preflight.
-5. Test production login, upload, local analysis, live AI and fallback before marking deployment complete.
+5. Test production registration, login, refresh, logout, upload, local analysis, live AI and fallback before marking deployment complete.
 
 References: [LangGraph](https://docs.langchain.com/oss/python/langgraph/graph-api), [VADER](https://github.com/cjhutto/vaderSentiment), [Vite on Vercel](https://vercel.com/docs/frameworks/frontend/vite), [FastAPI on Vercel](https://vercel.com/docs/frameworks/backend/fastapi).

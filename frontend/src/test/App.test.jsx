@@ -7,54 +7,17 @@ import fixtures from './fixtures.json';
 const response = (data, status = 200) => ({ ok: status < 400, status, json: async () => data });
 
 async function login(fetchMock = vi.fn()) {
-  fetchMock.mockResolvedValueOnce(response({ username: 'analyst' }));
+  fetchMock.mockResolvedValueOnce(response({ user: { name: 'Analyst', email: 'analyst@example.com' } }));
   vi.stubGlobal('fetch', fetchMock);
   render(<App />);
-  fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'analyst' } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'demo-password' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-  await screen.findByRole('heading', { name: 'Upload transcript' });
+  await screen.findByRole('heading', { name: 'Conversation text' });
   return fetchMock;
 }
 
-function upload(content = 'Good service.', name = 'demo.txt') {
+async function upload(content = 'Good service.', name = 'demo.txt') {
   fireEvent.change(screen.getByLabelText('Choose a transcript file'), { target: { files: [new File([content], name, { type: 'text/plain' })] } });
+  await waitFor(() => expect(screen.queryByText(/Reading transcript/)).not.toBeInTheDocument());
 }
-
-describe('Login and session', () => {
-  it('supports password visibility without changing the password', () => {
-    render(<App />);
-    const input = screen.getByLabelText('Password');
-    fireEvent.change(input, { target: { value: 'example' } });
-    expect(input).toHaveAttribute('type', 'password');
-    fireEvent.click(screen.getByRole('button', { name: 'Show password' }));
-    expect(input).toHaveAttribute('type', 'text');
-    expect(input).toHaveValue('example');
-    fireEvent.click(screen.getByRole('button', { name: 'Hide password' }));
-    expect(input).toHaveAttribute('type', 'password');
-  });
-
-  it('explains rejected credentials and clears the error on editing', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ detail: 'Incorrect credentials' }, 401)));
-    render(<App />);
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'wrong' } });
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('do not match this workspace');
-    expect(screen.getByLabelText('Username')).toHaveAttribute('aria-invalid', 'true');
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'analyst' } });
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('signs in with Basic auth and signs out without persisting credentials', async () => {
-    const fetchMock = await login();
-    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(`Basic ${btoa('analyst:demo-password')}`);
-    expect(localStorage.length).toBe(0);
-    expect(sessionStorage.length).toBe(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
-    expect(screen.getByLabelText('Password')).toHaveValue('');
-  });
-});
 
 describe('Upload and API states', () => {
   it.each([
@@ -63,7 +26,7 @@ describe('Upload and API states', () => {
     ['a'.repeat(100001), 'large.txt', 'no larger than 100 KB'],
   ])('rejects invalid file %s / %s', async (content, name, message) => {
     const fetchMock = await login();
-    upload(content, name);
+    await upload(content, name);
     expect(screen.getByRole('alert')).toHaveTextContent(message);
     expect(screen.getByRole('button', { name: 'Analyze conversation' })).toBeDisabled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -71,7 +34,7 @@ describe('Upload and API states', () => {
 
   it('rejects whitespace content before sending an analysis request', async () => {
     const fetchMock = await login();
-    upload(' \n\t');
+    await upload(' \n\t');
     fireEvent.click(screen.getByRole('button', { name: 'Analyze conversation' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('empty');
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -82,7 +45,7 @@ describe('Upload and API states', () => {
     fetchMock.mockResolvedValueOnce(response(enabled ? fixtures.hybrid : fixtures.local));
     expect(screen.getByRole('checkbox')).not.toBeChecked();
     if (enabled) fireEvent.click(screen.getByRole('checkbox'));
-    upload();
+    await upload();
     fireEvent.click(screen.getByRole('button', { name: 'Analyze conversation' }));
     await screen.findByRole('heading', { name: 'Conversation overview' });
     const body = fetchMock.mock.calls[1][1].body;
@@ -96,7 +59,7 @@ describe('Upload and API states', () => {
     const fetchMock = await login();
     let finish;
     fetchMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
-    upload();
+    await upload();
     fireEvent.click(screen.getByRole('button', { name: 'Analyze conversation' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(screen.getByRole('button', { name: 'Analyzing…' })).toBeDisabled();
@@ -108,7 +71,7 @@ describe('Upload and API states', () => {
   it.each(['Missing NVIDIA API key.', 'AI insights are temporarily unavailable.'])('keeps the dashboard on AI fallback: %s', async notice => {
     const fetchMock = await login();
     fetchMock.mockResolvedValueOnce(response({ ...fixtures.local, insights_notice: notice }));
-    upload();
+    await upload();
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: 'Analyze conversation' }));
     await screen.findByRole('heading', { name: 'Conversation overview' });
@@ -119,7 +82,7 @@ describe('Upload and API states', () => {
   it('allows retry after a network error', async () => {
     const fetchMock = await login();
     fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce(response(fixtures.local));
-    upload();
+    await upload();
     fireEvent.click(screen.getByRole('button', { name: 'Analyze conversation' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Cannot reach');
     fireEvent.click(screen.getByRole('button', { name: 'Analyze conversation' }));
@@ -129,9 +92,9 @@ describe('Upload and API states', () => {
   it('returns to login when analysis credentials expire', async () => {
     const fetchMock = await login();
     fetchMock.mockResolvedValueOnce(response({ detail: 'Unauthorized' }, 401));
-    upload();
+    await upload();
     fireEvent.click(screen.getByRole('button', { name: 'Analyze conversation' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('no longer valid');
+    expect(await screen.findByRole('alert')).toHaveTextContent('expired');
     expect(screen.getByLabelText('Password')).toHaveValue('');
   });
 });

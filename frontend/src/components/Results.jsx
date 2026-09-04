@@ -3,6 +3,26 @@ import Badge from './Badge';
 
 const score = value => `${value > 0 ? '+' : ''}${value.toFixed(4)}`;
 
+function ScoreChart({ sentences }) {
+  if (sentences.length < 2) return null;
+  const points = sentences.map((sentence, index) => `${35 + index / (sentences.length - 1) * 630},${80 - sentence.compound_score * 60}`).join(' ');
+  return <svg className="score-chart" viewBox="0 0 700 170" role="img" aria-label="Original VADER sentiment scores, in sentence order, from minus one to plus one">
+    {[20, 80, 140].map((y, index) => <g key={y}><line x1="35" x2="665" y1={y} y2={y} stroke="#e0e5ef" strokeDasharray={index === 1 ? '4 4' : undefined} /><text x="0" y={y + 4}>{['+1', '0', '−1'][index]}</text></g>)}
+    <polyline points={points} fill="none" stroke="#7565ed" strokeWidth="2.5" strokeLinejoin="round" />
+    <text x="35" y="165">Sentence 1</text><text x="665" y="165" textAnchor="end">Sentence {sentences.length}</text>
+  </svg>;
+}
+
+function SentimentDonut({ breakdown, count }) {
+  const colors = { Positive: '#32d6b1', Negative: '#ff6b7a', Neutral: '#9aa7b8' };
+  const stops = breakdown.map((item, index) => {
+    const start = breakdown.slice(0, index).reduce((total, previous) => total + previous.count, 0) / count * 100;
+    const end = start + item.count / count * 100;
+    return `${colors[item.sentiment]} ${start}% ${end}%`;
+  });
+  return <div className="sentiment-donut" style={{ background: `conic-gradient(${stops.join(',')})` }} aria-hidden="true"><div><strong>{count}</strong><span>sentences</span></div></div>;
+}
+
 function Evidence({ ids, sentences }) {
   if (!ids.length) return null;
   return <details className="evidence"><summary>View supporting sentences ({ids.length})</summary>{ids.map(id => {
@@ -53,9 +73,9 @@ export default function ResultDashboard({ result }) {
       <div className="panel-heading"><div><span className="section-number">02 / THE BIG PICTURE</span><h2 id="overview-title">Conversation overview</h2></div><span className="complete-mark">✓ Analysis complete</span></div>
       <div className="overview-content">
         <div className={`overall ${result.overall_sentiment.toLowerCase()}`}><span className="small-label">Overall sentiment</span><strong>{result.overall_sentiment}</strong><span>Across all speakers</span></div>
-        <div className="breakdown"><h3>Sentiment breakdown</h3><div className="stacked-bar" role="img" aria-label={result.breakdown.map(item => `${item.sentiment}: ${item.percentage}%`).join(', ')}>{result.breakdown.map(item => <span className={item.sentiment.toLowerCase()} key={item.sentiment} style={{ width: `${item.percentage}%` }} />)}</div>
+        <div className="breakdown"><h3>Sentiment breakdown</h3><div className="distribution-layout"><SentimentDonut breakdown={result.breakdown} count={kpis.sentence_count} /><div className="distribution-values"><div className="stacked-bar sr-only" role="img" aria-label={result.breakdown.map(item => `${item.sentiment}: ${item.percentage}%`).join(', ')}>{result.breakdown.map(item => <span className={item.sentiment.toLowerCase()} key={item.sentiment} style={{ width: `${item.percentage}%` }} />)}</div>
           <div className="legend">{result.breakdown.map(item => <div key={item.sentiment}><span className={`legend-dot ${item.sentiment.toLowerCase()}`} /><span>{item.sentiment}</span><strong>{item.percentage}%</strong><small>{item.count} {item.count === 1 ? 'sentence' : 'sentences'}</small></div>)}</div>
-        </div>
+        </div></div></div>
       </div>
       <div className="score-strip"><div><span>Compound score · VADER</span><strong>{score(result.compound_score)}</strong></div><p>Average original sentence polarity, from −1 to +1. This is not a confidence score.</p></div>
       {kpis.context_reviewed_count > 0 && <p className="context-note">AI reviewed {kpis.context_reviewed_count} ambiguous sentences and changed {kpis.context_corrected_count} labels. Original VADER overall: <strong>{result.vader_baseline.overall_sentiment}</strong>. Scores remain unchanged; the distribution reflects the final labels.</p>}
@@ -68,6 +88,7 @@ export default function ResultDashboard({ result }) {
     </section>
     <section className="panel" aria-labelledby="trend-title">
       <div className="panel-heading"><div><span className="section-number">THE CONVERSATION ARC</span><h2 id="trend-title">Sentiment trend</h2></div><span className="file-caption">Original VADER scores</span></div>
+      <ScoreChart sentences={result.sentences} />
       {kpis.trend.length ? <ol className="trend-segments">{kpis.trend.map(segment => <li key={segment.phase}><span>{segment.phase}</span><Badge sentiment={segment.sentiment} /><strong>{score(segment.compound_score)}</strong><small>Sentences {segment.sentence_ids[0]}–{segment.sentence_ids.at(-1)}</small></li>)}</ol> : <p className="context-note">At least three sentences are needed to show a beginning, middle, and end.</p>}
     </section>
     <section className="panel sentence-panel" aria-labelledby="sentence-title">

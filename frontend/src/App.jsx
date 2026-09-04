@@ -1,21 +1,29 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './styles.css';
-import Badge from './components/Badge';
 import ResultDashboard from './components/Results';
 
-const API_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
-const MAX_FILE_BYTES = 100_000;
+const SAMPLE = `Customer: I am frustrated because I was charged twice for my subscription.
+Agent: I am sorry about the duplicate charge. I will check your account now.
+Customer: I tried to contact support yesterday and nobody helped me.
+Agent: I found the extra payment and have submitted a refund.
+Customer: When will the money arrive?
+Agent: The refund should reach your account within five business days.
+Customer: Thank you, that is helpful. Please email the confirmation.
+Agent: I have sent the confirmation email. Is there anything else I can help with?
+Customer: No, thank you for resolving this.`;
 
 function Logo() {
-  return <div className="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" /><path d="M7 17h4l3-7 4 13 3-6h4" /></svg><span>Sentiment<span className="brand-light"> / Analyzer</span></span></div>;
+  return <div className="logo"><span className="logo-mark" aria-hidden="true">S</span>SignalSense</div>;
 }
 
-async function apiRequest(path, authorization, body, timeout = 30_000) {
+async function apiRequest(path, { method = 'POST', body, timeout = 30_000 } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
-    const response = await fetch(`${API_URL}${path}`, {
-      method: 'POST', headers: { Authorization: authorization }, body, signal: controller.signal,
+    const response = await fetch(path, {
+      method, credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
+      headers: body instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
+      body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
     });
     let data;
     try { data = await response.json(); } catch { throw new Error('The server returned an unreadable response. Please try again.'); }
@@ -27,138 +35,133 @@ async function apiRequest(path, authorization, body, timeout = 30_000) {
     return data;
   } catch (error) {
     if (error.name === 'AbortError') throw new Error('The request took too long. Please try again.');
-    if (error instanceof TypeError) throw new Error('Cannot reach the analysis server. Check that it is running and try again.');
+    if (error instanceof TypeError) throw new Error('Cannot reach the server. Please check your connection and try again.');
     throw error;
-  } finally {
-    clearTimeout(timer);
-  }
+  } finally { clearTimeout(timer); }
 }
 
-function Login({ onLogin, message }) {
-  const [username, setUsername] = useState('');
+function AuthScreen({ onLogin, message }) {
+  const [mode, setMode] = useState('register');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(message || '');
-  const [showPassword, setShowPassword] = useState(false);
-  const [capsLock, setCapsLock] = useState(false);
-  const [invalidCredentials, setInvalidCredentials] = useState(false);
-  const passwordRef = useRef(null);
-  const localDemo = import.meta.env.DEV && ['localhost', '127.0.0.1'].includes(window.location.hostname);
-
-  function clearError() { setError(''); setInvalidCredentials(false); }
-
-  function fillDemo() {
-    setUsername('analyst'); setPassword('read-conversations');
-    setShowPassword(false); clearError(); passwordRef.current?.focus();
-  }
-
   async function submit(event) {
     event.preventDefault();
-    clearError();
-    if (!username.trim() || !password) { setError('Enter your username and password.'); return; }
-    // HTTP Basic uses ASCII credentials; passwords stay only in component memory.
-    if (!/^[\x20-\x7E]+$/.test(username) || !/^[\x20-\x7E]+$/.test(password) || username.includes(':')) {
-      setError('Use ASCII credentials. The username cannot contain a colon.'); return;
-    }
-    setBusy(true);
+    if (busy) return;
+    setBusy(true); setError('');
     try {
-      const authorization = `Basic ${btoa(`${username.trim()}:${password}`)}`;
-      const result = await apiRequest('/api/login', authorization);
-      onLogin({ username: result.username, authorization });
-    } catch (err) {
-      setInvalidCredentials(err.status === 401);
-      setError(err.status === 401 ? 'Those credentials do not match this workspace. Use the configured account or check the sign-in help below.' : err.message);
-    }
+      const data = await apiRequest('/api/auth', { body: { action: mode, name, email: email.trim(), password } });
+      onLogin(data.user);
+    } catch (err) { setError(err.message); }
     finally { setBusy(false); }
   }
-
-  return <div className="login-page">
-    <header className="login-header"><Logo /><span className="eyebrow">Conversation insights</span></header>
-    <main className="login-main">
-      <div className="login-intro"><span className="eyebrow">A little more understanding</span><h1>Every conversation<br />has a tone.</h1><p>Explore sentiment, sentence by sentence.</p><div className="tone-line" aria-hidden="true"><i /><i /><i /></div></div>
-      <section className="login-card" aria-labelledby="login-title">
-        <span className="section-number">WORKSPACE ACCESS</span><h2 id="login-title">Sign in to your workspace</h2><p>Use your workspace account to analyze a transcript.</p>
-        <form onSubmit={submit} aria-busy={busy}>
-          <label htmlFor="username">Username</label><input id="username" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} value={username} onChange={e => { setUsername(e.target.value); clearError(); }} disabled={busy} aria-invalid={invalidCredentials} aria-describedby={error ? 'login-error' : undefined} required />
-          <label htmlFor="password">Password</label><div className="password-field"><input ref={passwordRef} id="password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={e => { setPassword(e.target.value); clearError(); }} onKeyDown={e => setCapsLock(e.getModifierState('CapsLock'))} onKeyUp={e => setCapsLock(e.getModifierState('CapsLock'))} onBlur={() => setCapsLock(false)} disabled={busy} aria-invalid={invalidCredentials} aria-describedby={error ? 'login-error' : capsLock ? 'caps-lock-note' : undefined} required /><button type="button" className="password-toggle" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)} disabled={busy}>{showPassword ? 'Hide' : 'Show'}</button></div>
-          {capsLock && <p id="caps-lock-note" className="caps-note" role="status">Caps Lock is on.</p>}
-          {error && <p id="login-error" className="error" role="alert">{error}</p>}
-          <button className="primary" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}<span aria-hidden="true">→</span></button>
-        </form>
-        {localDemo && <div className="demo-access"><div><strong>Trying the local demo?</strong><span>Use the default demo account.</span></div><button type="button" onClick={fillDemo} disabled={busy}>Fill demo login</button></div>}
-        <details className="signin-help"><summary>Which account should I use?</summary><p>This app uses one configured workspace account. Personal usernames and passwords are not connected.</p><p>For your own local account, set <code>APP_USERNAME</code> and <code>APP_PASSWORD</code> in <code>backend/.env</code>, then restart the backend.{localDemo && ' The demo button only works with the default demo credentials.'}</p></details>
-      </section>
-    </main>
-    <footer className="login-footer">Sentiment Analyzer<span>Positive. Negative. Neutral.</span></footer>
-  </div>;
+  return <main className="auth-shell">
+    <section className="auth-story"><Logo /><div className="eyebrow"><span />Conversation intelligence</div>
+      <h1>Turn every call into a <em>clear next move.</em></h1>
+      <p>Upload a transcript and see explainable sentiment, emotional signals, outcome quality, and the KPIs that matter.</p>
+      <div className="feature-row"><div><b>Sentence-level</b><span>Explainable sentiment</span></div><div><b>Evidence-led</b><span>Optional AI insights</span></div><div><b>Privacy-first</b><span>No saved transcripts</span></div></div>
+    </section>
+    <section className="auth-panel"><div className="auth-card"><div className="mobile-logo"><Logo /></div>
+      <p className="kicker">YOUR CONVERSATION WORKSPACE</p><h2>{mode === 'register' ? 'Start with clarity.' : 'Welcome back.'}</h2>
+      <p className="muted">{mode === 'register' ? 'Create your account and turn conversations into understanding.' : 'Sign in to continue analyzing your conversations.'}</p>
+      <div className="segmented" aria-label="Account access">{[['register', 'Register'], ['login', 'Sign in']].map(([value, label]) => <button type="button" key={value} className={mode === value ? 'active' : ''} aria-pressed={mode === value} disabled={busy} onClick={() => { setMode(value); setError(''); setPassword(''); setShowPassword(false); }}>{label}</button>)}</div>
+      <form onSubmit={submit} aria-busy={busy}>
+        {mode === 'register' && <label>Full name<input name="name" autoComplete="name" value={name} minLength={2} maxLength={60} required disabled={busy} onChange={e => { setName(e.target.value); setError(''); }} placeholder="Your full name" /></label>}
+        <label>Email address<input name="email" type="email" autoComplete="username" autoCapitalize="none" spellCheck={false} value={email} maxLength={254} required disabled={busy} onChange={e => { setEmail(e.target.value); setError(''); }} placeholder="you@example.com" /></label>
+        <label htmlFor="password">Password</label><div className="password-field"><input id="password" name="password" type={showPassword ? 'text' : 'password'} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} value={password} minLength={8} maxLength={128} required disabled={busy} onChange={e => { setPassword(e.target.value); setError(''); }} placeholder="At least 8 characters" aria-describedby={error ? 'auth-error' : undefined} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)} disabled={busy}>{showPassword ? 'Hide' : 'Show'}</button></div>
+        {error && <p id="auth-error" className="error" role="alert">{error}</p>}
+        <button className="primary full" type="submit" disabled={busy}>{busy ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Sign in to workspace'}<span aria-hidden="true">→</span></button>
+      </form><p className="terms">Your session stays signed in for 24 hours.<br />Transcripts are processed for analysis and are not saved.</p>
+    </div></section>
+  </main>;
 }
 
 function Workspace({ session, onLogout }) {
-  const [file, setFile] = useState(null);
+  const [text, setText] = useState('');
+  const [filename, setFilename] = useState('');
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
   const [includeInsights, setIncludeInsights] = useState(false);
   const inputRef = useRef(null);
-
-  function selectFile(candidate) {
-    setError(''); setResult(null); setFile(null);
+  const locked = busy || reading || signingOut;
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, [result]);
+  async function selectFile(candidate) {
+    setError(''); setText(''); setFilename('');
     if (!candidate) return;
     if (!candidate.name.toLowerCase().endsWith('.txt')) { setError('Please choose a .txt file.'); return; }
-    if (candidate.size > MAX_FILE_BYTES) { setError('Choose a file no larger than 100 KB.'); return; }
-    if (candidate.size === 0) { setError('This file is empty. Add conversation text and try again.'); return; }
-    setFile(candidate);
+    if (candidate.size > 100_000) { setError('Choose a file no larger than 100 KB.'); return; }
+    if (!candidate.size) { setError('This file is empty. Add conversation text and try again.'); return; }
+    setReading(true);
+    try {
+      // Fatal decoding avoids silently replacing invalid bytes before server validation.
+      const content = new TextDecoder('utf-8', { fatal: true }).decode(await candidate.arrayBuffer());
+      if (!content.trim()) throw new Error('This file is empty. Add conversation text and try again.');
+      if ([...content].some(character => character.charCodeAt(0) < 32 && !'\n\r\t'.includes(character))) throw new Error('The file contains binary or unsupported control characters.');
+      setText(content); setFilename(candidate.name);
+    } catch (err) { setError(err instanceof TypeError ? 'Save your transcript as UTF-8 text and try again.' : err.message); }
+    finally { setReading(false); }
   }
-
   async function analyze(event) {
     event.preventDefault();
-    if (!file || busy) return;
-    setBusy(true); setError(''); setResult(null);
+    if (!text.trim() || locked) return;
+    setError('');
+    const file = new File([text], filename || 'pasted-transcript.txt', { type: 'text/plain' });
+    if (file.size > 100_000) { setError('Choose text no larger than 100 KB.'); return; }
+    setBusy(true);
     try {
-      const text = await file.text();
-      if (!text.replace(/^\uFEFF/, '').trim()) throw new Error('This file is empty. Add conversation text and try again.');
-      const form = new FormData(); form.append('file', file);
-      form.append('include_insights', String(includeInsights));
-      setResult(await apiRequest('/api/analyze', session.authorization, form, includeInsights ? 65_000 : 30_000));
+      const form = new FormData(); form.append('file', file); form.append('include_insights', String(includeInsights));
+      setResult(await apiRequest('/api/analyze', { body: form, timeout: includeInsights ? 65_000 : 30_000 }));
     } catch (err) {
-      if (err.status === 401) { onLogout('Your credentials are no longer valid. Please sign in again.'); return; }
+      if (err.status === 401) { onLogout('Your session has expired. Please sign in again.'); return; }
       setError(err.message);
     } finally { setBusy(false); }
   }
-
-  return <div className="workspace">
-    <header className="topbar"><Logo /><div className="account"><span className="account-dot" aria-hidden="true" /><span>{session.username}</span><button className="text-button" onClick={() => onLogout()} disabled={busy}>Sign out</button></div></header>
-    <main className="workspace-main"><div className="page-heading"><div><span className="eyebrow">Your workspace</span><h1>Conversation insights</h1><p>A clear view of the sentiment behind the conversation.</p></div><span className="workspace-label">TEXT ANALYSIS</span></div>
-      <div className="workspace-grid">
-        <aside><section className="panel upload-panel" aria-labelledby="upload-title"><span className="section-number">01 / ADD A CONVERSATION</span><h2 id="upload-title">Upload transcript</h2><p className="subtle">Start with a text file of your call.</p>
+  async function logout() {
+    setSigningOut(true); setError('');
+    try { await apiRequest('/api/auth', { body: { action: 'logout' } }); onLogout(); }
+    catch (err) { setError(err.message); }
+    finally { setSigningOut(false); }
+  }
+  return <><header><Logo /><div className="header-right"><span className="live"><i />Local analysis ready</span><span className="avatar" aria-hidden="true">{session.name?.[0]?.toUpperCase() || 'S'}</span><div className="user"><b>{session.name}</b><small>{session.email}</small></div><button className="logout" disabled={locked} onClick={logout}>{signingOut ? 'Signing out…' : 'Sign out'}</button></div></header>
+    <main className="workspace">
+      <div className="intro"><div><p className="kicker">CONVERSATION INTELLIGENCE</p><h1>{result ? 'Your conversation, understood.' : 'What happened in this call?'}</h1><p>Go beyond positive or negative. Understand the tone, follow the conversation, and find the moments that matter.</p></div><div className="privacy"><span aria-hidden="true">✓</span><div><b>Your transcripts stay unsaved</b><small>Local sentiment by default. AI processing only when you choose it.</small></div></div></div>
+      {result ? <><button className="text-button back-button" onClick={() => { setResult(null); setError(''); }} disabled={locked}>← New analysis</button>{error && <p className="error" role="alert">{error}</p>}<ResultDashboard result={result} /></> : <div className="analyze-layout">
+        <section className="upload-card" aria-labelledby="upload-title"><div className="mode-head"><h2 id="upload-title">Conversation text</h2><button className="sample-button" disabled={locked} onClick={() => { setText(SAMPLE); setFilename('sample-call.txt'); setError(''); }}>Load sample call</button></div>
           <form onSubmit={analyze}>
-            <div className={`dropzone ${dragging ? 'dragging' : ''} ${busy ? 'disabled' : ''}`} onDragOver={event => { event.preventDefault(); if (!busy) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (!busy) { if (inputRef.current) inputRef.current.value = ''; selectFile(event.dataTransfer.files[0]); } }}>
-              <input ref={inputRef} id="transcript" type="file" accept=".txt,text/plain" disabled={busy} onChange={event => selectFile(event.target.files?.[0])} aria-label="Choose a transcript file" aria-describedby="file-help" />
-              <svg className="upload-icon" width="38" height="38" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M19 4H8v24h17V10l-6-6Z" stroke="currentColor" strokeWidth="1.5" /><path d="M19 4v7h6M11 17h10M11 21h7" stroke="currentColor" strokeWidth="1.5" /></svg>
-              <strong>{file ? 'Change transcript' : 'Choose a text file'}</strong><span>or drop it here</span><small id="file-help">.txt · UTF-8 · up to 100 KB</small>
-            </div>
-            {file && <div className="selected-file"><span aria-hidden="true">↳</span><div><strong title={file.name}>{file.name}</strong><small>{Math.max(0.1, file.size / 1000).toFixed(1)} KB · Ready to analyze</small></div></div>}
-            <label className="insights-option"><input type="checkbox" checked={includeInsights} disabled={busy} onChange={event => setIncludeInsights(event.target.checked)} /><span><strong>Add AI insights</strong><small>Summary, call KPIs, and contextual review</small></span></label>
-            {includeInsights && <p className="provider-note">Sends transcript text to NVIDIA for analysis. Requires a backend API key. Up to 100 sentences / 12,000 characters.</p>}
-            {error && <p className="error" role="alert">{error}</p>}
-            <button className="primary" type="submit" disabled={!file || busy}>{busy ? 'Analyzing…' : 'Analyze conversation'}<span aria-hidden="true">→</span></button>
+            <div className={`dropzone ${dragging ? 'dragging' : ''}`} onDragOver={e => { e.preventDefault(); if (!locked) setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); if (!locked) selectFile(e.dataTransfer.files[0]); }}>
+              <input ref={inputRef} type="file" accept=".txt,text/plain" disabled={locked} aria-label="Choose a transcript file" onChange={e => { selectFile(e.target.files?.[0]); e.target.value = ''; }} />
+              <div className="upload-icon" aria-hidden="true">↑</div><b>{reading ? 'Reading transcript…' : filename || 'Drop your transcript here'}</b><p>or click to browse · .txt · UTF-8 · up to 100 KB</p>
+            </div><div className="or">OR PASTE BELOW</div>
+            <label className="sr-only" htmlFor="conversation">Conversation transcript</label><textarea id="conversation" rows={10} disabled={locked} value={text} onChange={e => { setText(e.target.value); setFilename(''); setError(''); }} placeholder={'Customer: I need help with my recent order.\nAgent: Of course. Let me look into that for you…'} />
+            <div className="textarea-foot"><span>{text.length.toLocaleString()} characters</span><button type="button" disabled={locked || !text} onClick={() => { setText(''); setFilename(''); setError(''); }}>Clear text</button></div>
+            <label className="insights-option"><input type="checkbox" checked={includeInsights} disabled={locked} onChange={e => setIncludeInsights(e.target.checked)} /><span><strong>Add AI insights</strong><small>Summary, call outcome, emotions, and contextual review</small></span></label>
+            {includeInsights && <p className="provider-note">Sends transcript text to NVIDIA. Up to 100 sentences / 12,000 characters. AI interpretations include supporting evidence.</p>}
+            {error && <p className="error" role="alert">{error}</p>}<button className="primary analyze" type="submit" disabled={!text.trim() || locked}>{busy ? <><span className="spinner" aria-hidden="true" />Analyzing…</> : <>Analyze conversation<span aria-hidden="true">→</span></>}</button>
+            <p className="terms">English text · up to 500 sentences. The app does not save transcripts.</p>
           </form>
-          <p className="privacy-note">{includeInsights ? 'The app does not save transcripts. NVIDIA processes the text under its service terms.' : 'Analysis stays on this backend. The app does not save transcripts.'}</p>
-        </section><div className="format-note"><h3>A little formatting helps</h3><p>Use one speaking turn per line. Add <code>Customer:</code> and <code>Agent:</code> labels to distinguish speakers.</p><p>English text · up to 500 sentences</p></div></aside>
-        <div aria-busy={busy}>
-          <div className="sr-only" role="status">{busy ? 'Analyzing your conversation.' : result ? `Analysis complete. Overall sentiment: ${result.overall_sentiment}. ${result.kpis.sentence_count} sentences analyzed.` : ''}</div>
-          {result ? <ResultDashboard result={result} /> : <section className="empty-state panel"><div className="empty-art" aria-hidden="true"><span /><span /><span /><span /><span /></div><span className="section-number">{busy ? 'ANALYSIS IN PROGRESS' : 'READY WHEN YOU ARE'}</span><h2>{busy ? 'Reading the conversation…' : 'Your conversation, understood.'}</h2><p>{busy ? 'Analyzing each sentence and bringing the results together.' : 'Upload a transcript to explore its overall tone, sentiment breakdown, and sentence-level insights.'}</p><div className="empty-legend"><Badge sentiment="Positive" /><Badge sentiment="Negative" /><Badge sentiment="Neutral" /></div></section>}
-        </div>
-      </div>
-    </main>
-    <footer className="workspace-footer">Sentiment Analyzer<span>One conversation. A clearer perspective.</span></footer>
-  </div>;
+        </section><aside><section className="process-card"><p className="kicker">FROM WORDS TO UNDERSTANDING</p><h2>A clearer picture.</h2>{[['Sentence sentiment', 'See positive, neutral, and negative wording.'], ['Conversation arc', 'Follow how sentiment changes throughout the call.'], ['Calculated KPIs', 'Explore speaker sentiment and score variation.'], ['Optional AI insights', 'Review emotions and outcomes with evidence.']].map(([title, description], i) => <div className="process" key={title}><span>0{i + 1}</span><div><b>{title}</b><p>{description}</p></div></div>)}</section><div className="tip"><span aria-hidden="true">✦</span><div><b>A little formatting helps</b><p>Use one speaking turn per line. Add Customer: and Agent: labels to distinguish speakers.</p></div></div></aside>
+      </div>}<div className="sr-only" role="status">{busy ? 'Analyzing your conversation.' : result ? `Analysis complete. Overall sentiment: ${result.overall_sentiment}.` : ''}</div>
+    </main><footer className="workspace-footer">SignalSense<span>One conversation. A clearer perspective.</span></footer></>;
 }
 
 export default function App() {
   const [session, setSession] = useState(null);
-  const [loginMessage, setLoginMessage] = useState('');
-  function logout(message = '') { setLoginMessage(message); setSession(null); }
-  return session ? <Workspace session={session} onLogout={logout} /> : <Login onLogin={setSession} message={loginMessage} />;
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  useEffect(() => {
+    let active = true;
+    apiRequest('/api/auth', { method: 'GET' }).then(data => { if (active) setSession(data.user); })
+      .catch(error => { if (active) setMessage(error.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+  if (loading) return <div className="boot"><Logo /><div className="spinner" role="status" aria-label="Checking your session" /></div>;
+  return session ? <Workspace session={session} onLogout={(note = '') => { setSession(null); setMessage(note); }} /> : <AuthScreen onLogin={setSession} message={message} />;
 }

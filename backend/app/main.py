@@ -8,12 +8,14 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from .auth import require_user
+from .auth import router as auth_router
 from .config import MAX_FILE_BYTES
 from .models import AnalysisResult, LoginResult
 from .workflow import analyze_conversation
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Sentiment Analyzer", version="1.0.0")
+app.include_router(auth_router)
 
 
 class LimitRequestBody:
@@ -61,7 +63,7 @@ app.add_middleware(
         ).split(",")
         if origin.strip()
     ],
-    allow_methods=["POST"],
+    allow_methods=["GET", "POST"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -70,7 +72,8 @@ app.add_middleware(
 async def validation_error_handler(request, exc):
     return JSONResponse(
         status_code=422,
-        content={"detail": "Attach a .txt file and use true/false for include_insights."},
+        content={"detail": "Check the account fields and try again." if request.url.path == "/api/auth"
+                 else "Attach a .txt file and use true/false for include_insights."},
     )
 
 

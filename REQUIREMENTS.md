@@ -23,7 +23,7 @@ Sources: `Assignment Sentiment Analyzer Full Stack AI.pdf` (external assignment 
 | --- | --- | --- |
 | React / Next.js frontend | Complete | Existing React 19 + Vite application; production build passes |
 | Deploy frontend to Netlify / Vercel | Complete | [Live frontend](https://sentiment-analyzer-xi-five.vercel.app/) and [public backend](https://sentiment-analyzer-api-one.vercel.app/docs); hosted workflow verified |
-| Login (basic authentication acceptable) | Complete | Login screen, demo shortcut in development, show/hide password; Basic auth on both endpoints |
+| Login (basic authentication acceptable) | Complete | Reference-style registration/sign-in, scrypt password hashes, durable private accounts, HttpOnly sessions; legacy Basic API access retained |
 | `.txt` upload | Complete | Frontend chooser/dropzone; authenticated multipart API, UTF-8/content/size checks |
 | Dashboard with sentiment breakdown | Complete | Overall label, raw score, final counts/percentages, stacked chart, readable sentence table |
 | n8n or another agentic orchestration tool | Complete | Actual compiled LangGraph invoked for every analysis |
@@ -52,7 +52,7 @@ Sources: `Assignment Sentiment Analyzer Full Stack AI.pdf` (external assignment 
 | 12. Dashboard | Complete | Core overview first, chart, KPIs, trend, searchable/filterable table, optional AI findings and evidence |
 | 13. Loading/errors/fallback | Complete | Invalid files, short input, provider limits/key/auth/service/timeout/JSON failures; local results preserved |
 | 14. Key security | Complete locally | Backend-only key, placeholder examples, broader env ignore rules, source and bundle scan with no key exposure |
-| 15. Automated tests | Complete | 89 backend + 18 frontend tests; Ruff and ESLint pass |
+| 15. Automated tests | Complete | 102 backend + 21 frontend tests; Ruff and ESLint pass |
 | 16. Manual evaluation dataset | Complete | 20 cases in `samples/evaluation.json`; evaluation only, no training |
 | 17. Architecture separation | Complete | Preserved existing LangGraph and API boundaries; no unnecessary services |
 | 18. Performance | Complete | One optional request; at most 20 prioritized reviews; bounded input/output and timeouts; no automatic retries |
@@ -62,9 +62,9 @@ Sources: `Assignment Sentiment Analyzer Full Stack AI.pdf` (external assignment 
 
 | Check | Result |
 | --- | --- |
-| Backend pytest | **89 passed, 0 failed** |
-| Frontend Vitest / Testing Library | **18 passed, 0 failed** |
-| Total automated tests | **107 passed, 0 failed** |
+| Backend pytest | **102 passed, 0 failed** |
+| Frontend Vitest / Testing Library | **21 passed, 0 failed** |
+| Total automated tests | **123 passed, 0 failed** |
 | Ruff | Passed |
 | ESLint | Passed |
 | Vite production build | Passed |
@@ -99,3 +99,13 @@ VADER is English and lexicon-based. AI interpretations can still be wrong despit
 - Backend packaging uses `.python-version` and `requirements.txt`; development lint configuration was moved to `ruff.toml` to avoid Vercel treating it as a package definition.
 
 **No mandatory assignment deliverables remain unimplemented.** The deployed AI service remains subject to provider availability and the practical interpretation limits above.
+
+## SignalSense reference adaptation
+
+- Adapted the supplied ZIP design to React/FastAPI: navy/mint/purple registration and sign-in, responsive workspace, editable uploads, pasted text and sample call.
+- Added durable accounts using SQLite locally and a private Vercel Blob store in production; no transcript persistence.
+- Passwords use salted scrypt; 24-hour signed HttpOnly cookies restore the session after refresh. Same-origin API rewrites avoid third-party cookie issues.
+- Retained VADER/LangGraph/Nemotron behavior, opt-in, original scores, evidence, filters and safe fallback. Added a distribution donut and per-sentence score chart.
+- Automated coverage includes duplicate accounts, invalid fields, tampered/expired cookies, cross-origin rejection, production storage configuration and failures, registration/login/logout UI, and existing analysis regression cases.
+
+Hosted reference update verified: real registration, sign-out and returning-user email login; session restored in a fresh page; sample call and UTF-8 file uploads; live Nemotron on hybrid-demo.txt (four reviews, two label changes, unchanged +0.2425); Negative filter shows two of five sentences; responsive page has no horizontal overflow.
