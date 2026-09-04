@@ -1,5 +1,0 @@
-Customer: I am frustrated with the delay. This has been a terrible experience.
-Agent: Your order was shipped on Tuesday. The tracking number is 12345.
-Customer: I need it by Friday.
-Agent: I am happy to help. Your delivery is now confirmed for tomorrow.
-Customer: That is wonderful news! Thank you for your excellent help.

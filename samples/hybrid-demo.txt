@@ -1,5 +1,0 @@
-Customer: Great, I've been waiting for three hours.
-Agent: Your appointment is at 3 PM.
-Customer: If this isn't fixed today I want to speak with a manager.
-Agent: I have issued the refund.
-Customer: Thank you, the refund has arrived and everything is fine now.
