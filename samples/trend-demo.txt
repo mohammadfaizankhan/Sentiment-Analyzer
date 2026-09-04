@@ -1,0 +1,3 @@
+Customer: This is awful and I am furious.
+Agent: Your case number is 123.
+Customer: Everything is fixed and I am delighted, thank you!

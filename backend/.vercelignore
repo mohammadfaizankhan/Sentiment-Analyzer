@@ -1,0 +1,8 @@
+.venv
+.env
+.env.*
+tests
+__pycache__
+.pytest_cache
+requirements-dev.txt
+requirements-lock.txt
