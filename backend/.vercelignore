@@ -1,0 +1,10 @@
+.venv
+.env
+.env.*
+tests
+__pycache__
+.pytest_cache
+.ruff_cache
+requirements-dev.txt
+requirements-lock.txt
+ruff.toml
