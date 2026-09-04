@@ -22,7 +22,7 @@ Sources: `Assignment Sentiment Analyzer Full Stack AI.pdf` (external assignment 
 | Requirement | Status | Implementation / evidence |
 | --- | --- | --- |
 | React / Next.js frontend | Complete | Existing React 19 + Vite application; production build passes |
-| Deploy frontend to Netlify / Vercel | **Pending** | Both Vercel configurations exist; hosting session requires account access; no production URL claimed |
+| Deploy frontend to Netlify / Vercel | Complete | [Live frontend](https://sentiment-analyzer-xi-five.vercel.app/) and [public backend](https://sentiment-analyzer-api-one.vercel.app/docs); hosted workflow verified |
 | Login (basic authentication acceptable) | Complete | Login screen, demo shortcut in development, show/hide password; Basic auth on both endpoints |
 | `.txt` upload | Complete | Frontend chooser/dropzone; authenticated multipart API, UTF-8/content/size checks |
 | Dashboard with sentiment breakdown | Complete | Overall label, raw score, final counts/percentages, stacked chart, readable sentence table |
@@ -77,7 +77,7 @@ Sources: `Assignment Sentiment Analyzer Full Stack AI.pdf` (external assignment 
 | Dashboard chart and evidence | Present in browser; frontend tests cover rendering, filters and expandable reasoning |
 | Browser errors | None in observed error logs |
 | Secret scan | Configured key absent from source, fixtures, documentation and built frontend; actual `.env` excluded |
-| Production hosting | Not performed; account access required |
+| Production hosting | Both projects deployed to Vercel; public access and hosted workflow verified |
 
 A live response initially contained duplicate emotion labels and was rejected without losing VADER results. The prompt now explicitly requires unique emotions; subsequent live backend and browser requests passed validation. Validation remains strict. Test execution emits one upstream Starlette/AnyIO deprecation warning, with no failures.
 
@@ -85,4 +85,17 @@ A live response initially contained duplicate emotion labels and was rejected wi
 
 VADER is English and lexicon-based. AI interpretations can still be wrong despite valid structure/references. Scores and trends remain raw VADER even when final labels change; the dashboard explains that distinction. Neutral sentences can be flagged by low polarity, and only a bounded prioritized subset is reviewed. Unknown roles remain unavailable/Unknown. Resolution is a semantic judgment supported by cited text, not independently verified fact. There is no duration or measured CSAT score, no transcript persistence, and no accuracy benchmark claim.
 
-**Only unresolved assignment deliverable:** publish the configured application to Netlify/Vercel and verify the hosted workflow once hosting-account access is available.
+## Hosted verification — 4 September 2026
+
+- GitHub account `mohammadfaizankhan` linked to Vercel; both projects published in team `sentiment-analyzer1`.
+- Frontend: https://sentiment-analyzer-xi-five.vercel.app/
+- Backend: https://sentiment-analyzer-api-one.vercel.app/ (API documentation at `/docs`).
+- Public frontend/backend documentation returned HTTP 200. Valid login passed; missing authentication returned 401.
+- Exact production-origin CORS preflight passed. Authenticated `.txt` upload produced five VADER sentence results; an empty upload returned 400.
+- Live production browser analysis returned validated Nemotron insights: four reviewed sentences, two corrected labels, 20% Positive / 40% Negative / 40% Neutral, unchanged raw mean +0.2425.
+- Negative filtering showed two of five sentences without changing conversation KPIs. Contextual explanation expanded correctly. Chart, scores, trend and AI findings rendered with no observed browser errors or page-wide horizontal overflow.
+- The first hosted AI request timed out at the provider and correctly preserved VADER results. A subsequent browser request succeeded; this also exercised the real hosted fallback path.
+- Production password and NVIDIA key are backend-only sensitive environment variables. Production login is stored in the ignored local `backend/.env.production` file. Neither secret is present in the published frontend bundle or committed source.
+- Backend packaging uses `.python-version` and `requirements.txt`; development lint configuration was moved to `ruff.toml` to avoid Vercel treating it as a package definition.
+
+**No mandatory assignment deliverables remain unimplemented.** The deployed AI service remains subject to provider availability and the practical interpretation limits above.

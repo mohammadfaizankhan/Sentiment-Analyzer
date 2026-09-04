@@ -2,7 +2,12 @@
 
 A React dashboard for English `.txt` conversations. VADER provides fast, deterministic local sentiment; optional NVIDIA Nemotron 3 Super adds summaries, emotions, call KPIs and contextual review of ambiguous sentences. The existing login/upload application is preserved.
 
-**Locally implemented and verified. Live Netlify/Vercel deployment remains pending hosting-account access.** See [REQUIREMENTS.md](REQUIREMENTS.md) for the assignment and follow-up audit.
+**Deployed and verified on Vercel.** See [REQUIREMENTS.md](REQUIREMENTS.md) for the assignment and follow-up audit.
+
+- [Live application](https://sentiment-analyzer-xi-five.vercel.app/)
+- [Public backend API documentation](https://sentiment-analyzer-api-one.vercel.app/docs)
+
+The hosted app uses a separate production password. Its username/password were saved locally in ignored `backend/.env.production`; production credentials are not in this repository. The development demo password does not grant access to the hosted backend.
 
 ## Architecture
 
@@ -192,7 +197,22 @@ For missing-key fallback without editing the stored key: stop the backend, set `
 
 ## Deployment
 
-`frontend/vercel.json` and `backend/vercel.json` configure separate frontend and FastAPI projects. **Publishing and hosted verification remain incomplete:** the available Vercel session required login.
+`frontend/vercel.json` and `backend/vercel.json` configure separate frontend and FastAPI projects. Both are deployed in the `sentiment-analyzer1` Vercel team: `sentiment-analyzer` (frontend) and `sentiment-analyzer-api` (backend). GitHub sign-in is linked to the owner's Vercel account. These deployments were published with the CLI from their respective subdirectories.
+
+The backend uses Python 3.12 and a 60-second function limit. Ruff settings live in `backend/ruff.toml`, so Vercel installs runtime dependencies from `requirements.txt` rather than treating a lint-only `pyproject.toml` as a Python package. Production `CORS_ORIGINS` is restricted to the live frontend origin, and frontend `VITE_API_URL` points to the public backend. The production password and NVIDIA key are stored as sensitive backend environment variables.
+
+Hosted verification passed: public access, authenticated login, unauthorized-request rejection, CORS preflight, `.txt` upload, VADER results, empty-file rejection, live Nemotron insights, contextual corrections, score preservation, chart rendering, filtering and evidence expansion. One initial NVIDIA timeout preserved the local results; a subsequent browser analysis successfully returned all AI insights. No browser errors or page-wide horizontal overflow were observed. The published JavaScript bundle contains neither the provider key nor the production password.
+
+To publish updates from the already-linked local workspace:
+
+```powershell
+Set-Location .\backend
+npx.cmd vercel deploy --prod --scope sentiment-analyzer1
+Set-Location ..\frontend
+npx.cmd vercel deploy --prod --scope sentiment-analyzer1
+```
+
+For a new Vercel account or fresh project setup:
 
 1. Authenticate with `npx.cmd vercel login`.
 2. From `backend`, run `npx.cmd vercel` to link the project. Set `APP_USERNAME`, a new strong `APP_PASSWORD`, `CORS_ORIGINS`, and optional `NVIDIA_API_KEY`/`NVIDIA_MODEL` in hosting settings. Deploy with `npx.cmd vercel --prod`.
